@@ -1,5 +1,5 @@
--- Alliver Hub | Stable Invisibility
--- Fixed movement + better hiding attempt
+-- Alliver Hub | Maximum Invisibility (Hitbox Preserved)
+-- You stay in the same place with real hitboxes, only visuals are destroyed
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,12 +9,13 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local Character, Humanoid, RootPart
 local Invisible = false
-local OriginalValues = {}
+local EnforceConnection = nil
+local OriginalData = {}
 
 local Logs = {}
 local MaxLogs = 14
 
--- ====================== LOG SYSTEM ======================
+-- ====================== LOGS ======================
 local function AddLog(text, color)
 	color = color or Color3.fromRGB(200, 200, 220)
 	table.insert(Logs, 1, {Text = text, Color = color})
@@ -39,9 +40,9 @@ if not ScreenGui.Parent then
 end
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 330, 0, 400)
-MainFrame.Position = UDim2.new(0.5, -165, 0.35, -200)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainFrame.Size = UDim2.new(0, 340, 0, 410)
+MainFrame.Position = UDim2.new(0.5, -170, 0.32, -205)
+MainFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 19)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
@@ -50,16 +51,16 @@ MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
 
 local Stroke = Instance.new("UIStroke", MainFrame)
-Stroke.Color = Color3.fromRGB(100, 90, 255)
-Stroke.Thickness = 1.5
-Stroke.Transparency = 0.3
+Stroke.Color = Color3.fromRGB(110, 95, 255)
+Stroke.Thickness = 1.6
+Stroke.Transparency = 0.25
 
 local Title = Instance.new("TextLabel", MainFrame)
 Title.Size = UDim2.new(1, -20, 0, 34)
 Title.Position = UDim2.new(0, 10, 0, 6)
 Title.BackgroundTransparency = 1
 Title.Text = "Alliver Hub"
-Title.TextColor3 = Color3.fromRGB(170, 170, 255)
+Title.TextColor3 = Color3.fromRGB(175, 170, 255)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 20
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -68,46 +69,46 @@ local SubTitle = Instance.new("TextLabel", MainFrame)
 SubTitle.Size = UDim2.new(1, -20, 0, 18)
 SubTitle.Position = UDim2.new(0, 10, 0, 34)
 SubTitle.BackgroundTransparency = 1
-SubTitle.Text = "Stable Invisibility"
-SubTitle.TextColor3 = Color3.fromRGB(130, 130, 165)
+SubTitle.Text = "Max Invisibility | Hitboxes Kept"
+SubTitle.TextColor3 = Color3.fromRGB(130, 130, 170)
 SubTitle.Font = Enum.Font.Gotham
 SubTitle.TextSize = 12
 SubTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 local ToggleBtn = Instance.new("TextButton", MainFrame)
-ToggleBtn.Size = UDim2.new(0.9, 0, 0, 42)
+ToggleBtn.Size = UDim2.new(0.9, 0, 0, 44)
 ToggleBtn.Position = UDim2.new(0.05, 0, 0, 62)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 46)
 ToggleBtn.Text = "Enable Invisibility"
-ToggleBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+ToggleBtn.TextColor3 = Color3.fromRGB(225, 225, 255)
 ToggleBtn.Font = Enum.Font.GothamSemibold
 ToggleBtn.TextSize = 15
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 8)
 
 local StatusLabel = Instance.new("TextLabel", MainFrame)
 StatusLabel.Size = UDim2.new(0.9, 0, 0, 22)
-StatusLabel.Position = UDim2.new(0.05, 0, 0, 112)
+StatusLabel.Position = UDim2.new(0.05, 0, 0, 114)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "Status: Off"
-StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 185)
 StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 13
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 local ClearBtn = Instance.new("TextButton", MainFrame)
 ClearBtn.Size = UDim2.new(0.42, 0, 0, 28)
-ClearBtn.Position = UDim2.new(0.05, 0, 0, 142)
-ClearBtn.BackgroundColor3 = Color3.fromRGB(40, 28, 48)
+ClearBtn.Position = UDim2.new(0.05, 0, 0, 145)
+ClearBtn.BackgroundColor3 = Color3.fromRGB(42, 28, 50)
 ClearBtn.Text = "Clear Logs"
-ClearBtn.TextColor3 = Color3.fromRGB(200, 180, 220)
+ClearBtn.TextColor3 = Color3.fromRGB(205, 185, 225)
 ClearBtn.Font = Enum.Font.Gotham
 ClearBtn.TextSize = 12
 Instance.new("UICorner", ClearBtn).CornerRadius = UDim.new(0, 6)
 
 local CheckBtn = Instance.new("TextButton", MainFrame)
 CheckBtn.Size = UDim2.new(0.42, 0, 0, 28)
-CheckBtn.Position = UDim2.new(0.53, 0, 0, 142)
-CheckBtn.BackgroundColor3 = Color3.fromRGB(28, 38, 52)
+CheckBtn.Position = UDim2.new(0.53, 0, 0, 145)
+CheckBtn.BackgroundColor3 = Color3.fromRGB(26, 38, 54)
 CheckBtn.Text = "Check"
 CheckBtn.TextColor3 = Color3.fromRGB(180, 220, 255)
 CheckBtn.Font = Enum.Font.Gotham
@@ -116,21 +117,21 @@ Instance.new("UICorner", CheckBtn).CornerRadius = UDim.new(0, 6)
 
 local LogTitle = Instance.new("TextLabel", MainFrame)
 LogTitle.Size = UDim2.new(1, -20, 0, 20)
-LogTitle.Position = UDim2.new(0, 10, 0, 180)
+LogTitle.Position = UDim2.new(0, 10, 0, 184)
 LogTitle.BackgroundTransparency = 1
 LogTitle.Text = "Logs / Errors:"
-LogTitle.TextColor3 = Color3.fromRGB(150, 150, 190)
+LogTitle.TextColor3 = Color3.fromRGB(150, 150, 195)
 LogTitle.Font = Enum.Font.GothamSemibold
 LogTitle.TextSize = 13
 LogTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 local LogFrame = Instance.new("ScrollingFrame", MainFrame)
-LogFrame.Size = UDim2.new(0.9, 0, 0, 185)
-LogFrame.Position = UDim2.new(0.05, 0, 0, 202)
-LogFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+LogFrame.Size = UDim2.new(0.9, 0, 0, 190)
+LogFrame.Position = UDim2.new(0.05, 0, 0, 206)
+LogFrame.BackgroundColor3 = Color3.fromRGB(9, 9, 13)
 LogFrame.BorderSizePixel = 0
 LogFrame.ScrollBarThickness = 4
-LogFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 150)
+LogFrame.ScrollBarImageColor3 = Color3.fromRGB(85, 80, 160)
 LogFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 Instance.new("UICorner", LogFrame).CornerRadius = UDim.new(0, 8)
 
@@ -157,167 +158,189 @@ _G.AlliverUpdateLogs = function()
 	LogFrame.CanvasSize = UDim2.new(0, 0, 0, LogList.AbsoluteContentSize.Y + 8)
 end
 
--- ====================== CORE ======================
+-- ====================== CORE LOGIC ======================
 local function GetCharacter()
 	local success, err = pcall(function()
 		Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 		Humanoid = Character:WaitForChild("Humanoid", 5)
 		RootPart = Character:WaitForChild("HumanoidRootPart", 5)
 		if not Humanoid or not RootPart then
-			error("Humanoid or RootPart not found")
+			error("Humanoid or RootPart missing")
 		end
 	end)
 	if not success then
-		AddLog("[ERROR] " .. tostring(err), Color3.fromRGB(255, 90, 90))
+		AddLog("[ERROR] " .. tostring(err), Color3.fromRGB(255, 85, 85))
 		return false
 	end
-	AddLog("[OK] Character ready", Color3.fromRGB(100, 255, 140))
+	AddLog("[OK] Character ready", Color3.fromRGB(100, 255, 145))
 	return true
 end
 
-local function SaveOriginal()
-	OriginalValues = {}
+local function SaveOriginalState()
+	OriginalData = {}
 	local count = 0
 
 	for _, v in pairs(Character:GetDescendants()) do
 		if v:IsA("BasePart") then
-			OriginalValues[v] = {
+			OriginalData[v] = {
 				Transparency = v.Transparency,
-				CanCollide = v.CanCollide
+				CanCollide = v.CanCollide,
+				Size = v.Size,
+				LocalTransparencyModifier = v.LocalTransparencyModifier
 			}
 			count += 1
 		elseif v:IsA("Decal") or v:IsA("Texture") then
-			OriginalValues[v] = {Transparency = v.Transparency}
-		elseif v:IsA("Accessory") then
-			OriginalValues[v] = true
+			OriginalData[v] = {Transparency = v.Transparency}
+		elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
+			OriginalData[v] = {Enabled = v.Enabled}
 		end
 	end
 
-	-- Clothing
+	-- Save clothing references
+	OriginalData.Shirt = Character:FindFirstChildOfClass("Shirt")
+	OriginalData.Pants = Character:FindFirstChildOfClass("Pants")
+	OriginalData.TShirt = Character:FindFirstChildOfClass("ShirtGraphic")
+
+	AddLog("[OK] Saved state of " .. count .. " objects", Color3.fromRGB(100, 220, 255))
+end
+
+local function ForceHide()
+	if not Character or not Character.Parent then return end
+
+	-- Destroy accessories every time (games re-add them)
+	for _, child in pairs(Character:GetChildren()) do
+		if child:IsA("Accessory") or child:IsA("Hat") then
+			child:Destroy()
+		end
+	end
+
+	-- Destroy clothing
 	local shirt = Character:FindFirstChildOfClass("Shirt")
 	local pants = Character:FindFirstChildOfClass("Pants")
 	local tshirt = Character:FindFirstChildOfClass("ShirtGraphic")
-	if shirt then OriginalValues["Shirt"] = shirt end
-	if pants then OriginalValues["Pants"] = pants end
-	if tshirt then OriginalValues["TShirt"] = tshirt end
+	if shirt then shirt:Destroy() end
+	if pants then pants:Destroy() end
+	if tshirt then tshirt:Destroy() end
 
-	AddLog("[OK] Saved " .. count .. " parts", Color3.fromRGB(100, 220, 255))
-end
-
-local function SetInvisible(state)
-	local success, err = pcall(function()
-		if state then
-			-- Hide everything
-			for _, v in pairs(Character:GetDescendants()) do
-				if v:IsA("BasePart") then
-					v.Transparency = 1
-					if v.Name ~= "HumanoidRootPart" then
-						v.CanCollide = false
-					end
-				elseif v:IsA("Decal") or v:IsA("Texture") then
-					v.Transparency = 1
-				elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
-					v.Enabled = false
-				end
+	-- Force every part
+	for _, v in pairs(Character:GetDescendants()) do
+		if v:IsA("BasePart") then
+			v.Transparency = 1
+			v.LocalTransparencyModifier = 1
+			if v.Name ~= "HumanoidRootPart" then
+				v.CanCollide = false
 			end
-
-			-- Remove accessories
-			for _, acc in pairs(Character:GetChildren()) do
-				if acc:IsA("Accessory") then
-					acc:Destroy()
-				end
-			end
-
-			-- Remove clothing
-			local shirt = Character:FindFirstChildOfClass("Shirt")
-			local pants = Character:FindFirstChildOfClass("Pants")
-			local tshirt = Character:FindFirstChildOfClass("ShirtGraphic")
-			if shirt then shirt:Destroy() end
-			if pants then pants:Destroy() end
-			if tshirt then tshirt:Destroy() end
-
-			-- Hide name & health
-			Humanoid.NameDisplayDistance = 0
-			Humanoid.HealthDisplayDistance = 0
-			Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-
-		else
-			-- Restore
-			for obj, data in pairs(OriginalValues) do
-				if typeof(obj) == "Instance" and obj.Parent then
-					if obj:IsA("BasePart") then
-						obj.Transparency = data.Transparency or 0
-						obj.CanCollide = data.CanCollide
-					elseif obj:IsA("Decal") or obj:IsA("Texture") then
-						obj.Transparency = data.Transparency or 0
-					end
-				end
-			end
-
-			Humanoid.NameDisplayDistance = 100
-			Humanoid.HealthDisplayDistance = 100
-			Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+		elseif v:IsA("Decal") or v:IsA("Texture") then
+			v.Transparency = 1
+		elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
+			v.Enabled = false
 		end
-	end)
-
-	if not success then
-		AddLog("[ERROR] SetInvisible: " .. tostring(err), Color3.fromRGB(255, 80, 80))
-		return false
 	end
 
-	AddLog(state and "[OK] Invisibility applied" or "[OK] Restored", 
-		state and Color3.fromRGB(180, 140, 255) or Color3.fromRGB(100, 255, 160))
-	return true
+	-- Hide name & health
+	pcall(function()
+		Humanoid.NameDisplayDistance = 0
+		Humanoid.HealthDisplayDistance = 0
+		Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	end)
+end
+
+local function Restore()
+	if not Character then return end
+
+	for obj, data in pairs(OriginalData) do
+		if typeof(obj) == "Instance" and obj.Parent then
+			pcall(function()
+				if obj:IsA("BasePart") then
+					obj.Transparency = data.Transparency or 0
+					obj.LocalTransparencyModifier = data.LocalTransparencyModifier or 0
+					obj.CanCollide = data.CanCollide
+				elseif obj:IsA("Decal") or obj:IsA("Texture") then
+					obj.Transparency = data.Transparency or 0
+				elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+					obj.Enabled = data.Enabled
+				end
+			end)
+		end
+	end
+
+	pcall(function()
+		Humanoid.NameDisplayDistance = 100
+		Humanoid.HealthDisplayDistance = 100
+		Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+	end)
+end
+
+local function StartEnforcement()
+	if EnforceConnection then EnforceConnection:Disconnect() end
+
+	EnforceConnection = RunService.Heartbeat:Connect(function()
+		if Invisible and Character and Character.Parent then
+			ForceHide()
+		end
+	end)
+end
+
+local function StopEnforcement()
+	if EnforceConnection then
+		EnforceConnection:Disconnect()
+		EnforceConnection = nil
+	end
 end
 
 local function ToggleInvisibility()
-	AddLog("——— Toggling ———", Color3.fromRGB(140, 140, 180))
+	AddLog("——— Toggling ———", Color3.fromRGB(145, 145, 185))
 
 	if not GetCharacter() then return end
 
 	Invisible = not Invisible
 
 	if Invisible then
-		SaveOriginal()
-		if SetInvisible(true) then
-			ToggleBtn.Text = "Disable Invisibility"
-			ToggleBtn.BackgroundColor3 = Color3.fromRGB(55, 28, 70)
-			StatusLabel.Text = "Status: On"
-			StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 160)
-			AddLog("[SUCCESS] You are now invisible (local + reduced for others)", Color3.fromRGB(100, 255, 160))
-		end
+		SaveOriginalState()
+		ForceHide()
+		StartEnforcement()
+
+		ToggleBtn.Text = "Disable Invisibility"
+		ToggleBtn.BackgroundColor3 = Color3.fromRGB(58, 28, 72)
+		StatusLabel.Text = "Status: On | Hitboxes Active"
+		StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 160)
+
+		AddLog("[SUCCESS] Invisibility enabled", Color3.fromRGB(100, 255, 160))
+		AddLog("Hitboxes & death logic fully preserved", Color3.fromRGB(180, 150, 255))
 	else
-		if SetInvisible(false) then
-			ToggleBtn.Text = "Enable Invisibility"
-			ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
-			StatusLabel.Text = "Status: Off"
-			StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
-			AddLog("[SUCCESS] Invisibility disabled", Color3.fromRGB(160, 200, 255))
-		end
+		StopEnforcement()
+		Restore()
+
+		ToggleBtn.Text = "Enable Invisibility"
+		ToggleBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 46)
+		StatusLabel.Text = "Status: Off"
+		StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 185)
+
+		AddLog("[SUCCESS] Invisibility disabled + restored", Color3.fromRGB(160, 205, 255))
 	end
 end
 
 local function CheckEverything()
-	AddLog("——— Diagnostics ———", Color3.fromRGB(140, 140, 180))
+	AddLog("——— Diagnostics ———", Color3.fromRGB(145, 145, 185))
 	if not GetCharacter() then return end
 
-	local visible = 0
-	local total = 0
-
+	local total, visible = 0, 0
 	for _, v in pairs(Character:GetDescendants()) do
 		if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
 			total += 1
-			if v.Transparency < 1 then
+			if v.Transparency < 1 or v.LocalTransparencyModifier < 1 then
 				visible += 1
 			end
 		end
 	end
 
-	AddLog("Total parts: " .. total, Color3.fromRGB(200, 200, 220))
-	AddLog("Still visible parts: " .. visible, visible > 0 and Color3.fromRGB(255, 160, 60) or Color3.fromRGB(100, 255, 140))
+	AddLog("Body parts: " .. total, Color3.fromRGB(200, 200, 220))
+	AddLog("Still visible: " .. visible, visible > 0 and Color3.fromRGB(255, 160, 60) or Color3.fromRGB(100, 255, 145))
+	AddLog("RootPart CanCollide: " .. tostring(RootPart.CanCollide), Color3.fromRGB(200, 200, 220))
+	AddLog("Enforcement active: " .. tostring(EnforceConnection ~= nil), Color3.fromRGB(200, 200, 220))
 
 	if Invisible and visible == 0 then
-		AddLog("[OK] All parts hidden on your client", Color3.fromRGB(100, 255, 160))
+		AddLog("[OK] Fully hidden on your client", Color3.fromRGB(100, 255, 145))
 	end
 end
 
@@ -329,7 +352,7 @@ end)
 
 ClearBtn.MouseButton1Click:Connect(function()
 	ClearLogs()
-	AddLog("Logs cleared", Color3.fromRGB(160, 160, 180))
+	AddLog("Logs cleared", Color3.fromRGB(160, 160, 185))
 end)
 
 CheckBtn.MouseButton1Click:Connect(function()
@@ -346,18 +369,19 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 LocalPlayer.CharacterAdded:Connect(function()
-	AddLog("[INFO] Character respawned", Color3.fromRGB(180, 180, 100))
+	AddLog("[INFO] Character respawned", Color3.fromRGB(185, 185, 110))
 	Invisible = false
+	StopEnforcement()
 	ToggleBtn.Text = "Enable Invisibility"
-	ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
+	ToggleBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 46)
 	StatusLabel.Text = "Status: Off"
-	StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
-	task.wait(1)
+	StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 185)
+	task.wait(1.2)
 	GetCharacter()
 end)
 
 -- Start
-AddLog("Alliver Hub loaded (Stable version)", Color3.fromRGB(140, 140, 255))
-AddLog("Keybind: G", Color3.fromRGB(140, 140, 180))
-AddLog("Note: True invisibility for others is limited", Color3.fromRGB(255, 180, 100))
+AddLog("Alliver Hub loaded", Color3.fromRGB(145, 145, 255))
+AddLog("Keybind: G", Color3.fromRGB(145, 145, 185))
+AddLog("Hitboxes + death logic fully preserved", Color3.fromRGB(180, 150, 255))
 GetCharacter()
