@@ -1,5 +1,5 @@
--- Alliver Hub | True Invisibility (others can't see you)
--- English version + Debug
+-- Alliver Hub | Stable Invisibility
+-- Fixed movement + better hiding attempt
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,13 +7,9 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
 local Character, Humanoid, RootPart
 local Invisible = false
-local OriginalParent = nil
-local Connection = nil
-local BodyVelocity = nil
+local OriginalValues = {}
 
 local Logs = {}
 local MaxLogs = 14
@@ -72,7 +68,7 @@ local SubTitle = Instance.new("TextLabel", MainFrame)
 SubTitle.Size = UDim2.new(1, -20, 0, 18)
 SubTitle.Position = UDim2.new(0, 10, 0, 34)
 SubTitle.BackgroundTransparency = 1
-SubTitle.Text = "True Invisibility (Server Hidden)"
+SubTitle.Text = "Stable Invisibility"
 SubTitle.TextColor3 = Color3.fromRGB(130, 130, 165)
 SubTitle.Font = Enum.Font.Gotham
 SubTitle.TextSize = 12
@@ -161,14 +157,14 @@ _G.AlliverUpdateLogs = function()
 	LogFrame.CanvasSize = UDim2.new(0, 0, 0, LogList.AbsoluteContentSize.Y + 8)
 end
 
--- ====================== CORE FUNCTIONS ======================
+-- ====================== CORE ======================
 local function GetCharacter()
 	local success, err = pcall(function()
 		Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-		Humanoid = Character:WaitForChild("Humanoid", 4)
-		RootPart = Character:WaitForChild("HumanoidRootPart", 4)
+		Humanoid = Character:WaitForChild("Humanoid", 5)
+		RootPart = Character:WaitForChild("HumanoidRootPart", 5)
 		if not Humanoid or not RootPart then
-			error("Humanoid or RootPart missing")
+			error("Humanoid or RootPart not found")
 		end
 	end)
 	if not success then
@@ -179,114 +175,124 @@ local function GetCharacter()
 	return true
 end
 
-local function EnableInvisibility()
-	if not GetCharacter() then return false end
+local function SaveOriginal()
+	OriginalValues = {}
+	local count = 0
 
-	local success, err = pcall(function()
-		OriginalParent = Character.Parent
-
-		-- Remove character from Workspace → stops replication to other players
-		Character.Parent = nil
-
-		-- Create BodyVelocity so we can still move
-		BodyVelocity = Instance.new("BodyVelocity")
-		BodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-		BodyVelocity.Velocity = Vector3.zero
-		BodyVelocity.Parent = RootPart
-
-		-- Movement loop
-		Connection = RunService.Heartbeat:Connect(function()
-			if not RootPart or not RootPart.Parent then return end
-
-			local moveDir = Humanoid.MoveDirection
-			local speed = Humanoid.WalkSpeed
-
-			if moveDir.Magnitude > 0 then
-				BodyVelocity.Velocity = moveDir * speed
-			else
-				BodyVelocity.Velocity = Vector3.zero
-			end
-
-			-- Keep upright
-			RootPart.CFrame = CFrame.new(RootPart.Position, RootPart.Position + Camera.CFrame.LookVector * Vector3.new(1, 0, 1))
-		end)
-
-		-- Hide all visual parts just in case
-		for _, v in pairs(Character:GetDescendants()) do
-			if v:IsA("BasePart") then
-				v.Transparency = 1
-				v.CanCollide = false
-			elseif v:IsA("Decal") or v:IsA("Texture") then
-				v.Transparency = 1
-			end
+	for _, v in pairs(Character:GetDescendants()) do
+		if v:IsA("BasePart") then
+			OriginalValues[v] = {
+				Transparency = v.Transparency,
+				CanCollide = v.CanCollide
+			}
+			count += 1
+		elseif v:IsA("Decal") or v:IsA("Texture") then
+			OriginalValues[v] = {Transparency = v.Transparency}
+		elseif v:IsA("Accessory") then
+			OriginalValues[v] = true
 		end
-	end)
-
-	if not success then
-		AddLog("[ERROR] Enable failed: " .. tostring(err), Color3.fromRGB(255, 80, 80))
-		return false
 	end
 
-	AddLog("[SUCCESS] Character removed from Workspace", Color3.fromRGB(100, 255, 160))
-	AddLog("Other players should no longer see you", Color3.fromRGB(180, 140, 255))
-	return true
+	-- Clothing
+	local shirt = Character:FindFirstChildOfClass("Shirt")
+	local pants = Character:FindFirstChildOfClass("Pants")
+	local tshirt = Character:FindFirstChildOfClass("ShirtGraphic")
+	if shirt then OriginalValues["Shirt"] = shirt end
+	if pants then OriginalValues["Pants"] = pants end
+	if tshirt then OriginalValues["TShirt"] = tshirt end
+
+	AddLog("[OK] Saved " .. count .. " parts", Color3.fromRGB(100, 220, 255))
 end
 
-local function DisableInvisibility()
+local function SetInvisible(state)
 	local success, err = pcall(function()
-		if Connection then
-			Connection:Disconnect()
-			Connection = nil
-		end
-		if BodyVelocity then
-			BodyVelocity:Destroy()
-			BodyVelocity = nil
-		end
-
-		if Character and OriginalParent then
-			Character.Parent = OriginalParent
-		end
-
-		-- Restore visuals
-		if Character then
+		if state then
+			-- Hide everything
 			for _, v in pairs(Character:GetDescendants()) do
-				if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
-					v.Transparency = 0
-					v.CanCollide = true
+				if v:IsA("BasePart") then
+					v.Transparency = 1
+					if v.Name ~= "HumanoidRootPart" then
+						v.CanCollide = false
+					end
 				elseif v:IsA("Decal") or v:IsA("Texture") then
-					v.Transparency = 0
+					v.Transparency = 1
+				elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
+					v.Enabled = false
 				end
 			end
+
+			-- Remove accessories
+			for _, acc in pairs(Character:GetChildren()) do
+				if acc:IsA("Accessory") then
+					acc:Destroy()
+				end
+			end
+
+			-- Remove clothing
+			local shirt = Character:FindFirstChildOfClass("Shirt")
+			local pants = Character:FindFirstChildOfClass("Pants")
+			local tshirt = Character:FindFirstChildOfClass("ShirtGraphic")
+			if shirt then shirt:Destroy() end
+			if pants then pants:Destroy() end
+			if tshirt then tshirt:Destroy() end
+
+			-- Hide name & health
+			Humanoid.NameDisplayDistance = 0
+			Humanoid.HealthDisplayDistance = 0
+			Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+
+		else
+			-- Restore
+			for obj, data in pairs(OriginalValues) do
+				if typeof(obj) == "Instance" and obj.Parent then
+					if obj:IsA("BasePart") then
+						obj.Transparency = data.Transparency or 0
+						obj.CanCollide = data.CanCollide
+					elseif obj:IsA("Decal") or obj:IsA("Texture") then
+						obj.Transparency = data.Transparency or 0
+					end
+				end
+			end
+
+			Humanoid.NameDisplayDistance = 100
+			Humanoid.HealthDisplayDistance = 100
+			Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 		end
 	end)
 
 	if not success then
-		AddLog("[ERROR] Disable failed: " .. tostring(err), Color3.fromRGB(255, 80, 80))
+		AddLog("[ERROR] SetInvisible: " .. tostring(err), Color3.fromRGB(255, 80, 80))
 		return false
 	end
 
-	AddLog("[SUCCESS] Character restored", Color3.fromRGB(160, 200, 255))
+	AddLog(state and "[OK] Invisibility applied" or "[OK] Restored", 
+		state and Color3.fromRGB(180, 140, 255) or Color3.fromRGB(100, 255, 160))
 	return true
 end
 
 local function ToggleInvisibility()
 	AddLog("——— Toggling ———", Color3.fromRGB(140, 140, 180))
 
-	if not Invisible then
-		if EnableInvisibility() then
-			Invisible = true
+	if not GetCharacter() then return end
+
+	Invisible = not Invisible
+
+	if Invisible then
+		SaveOriginal()
+		if SetInvisible(true) then
 			ToggleBtn.Text = "Disable Invisibility"
 			ToggleBtn.BackgroundColor3 = Color3.fromRGB(55, 28, 70)
-			StatusLabel.Text = "Status: On (Hidden from others)"
+			StatusLabel.Text = "Status: On"
 			StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 160)
+			AddLog("[SUCCESS] You are now invisible (local + reduced for others)", Color3.fromRGB(100, 255, 160))
 		end
 	else
-		if DisableInvisibility() then
-			Invisible = false
+		if SetInvisible(false) then
 			ToggleBtn.Text = "Enable Invisibility"
 			ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
 			StatusLabel.Text = "Status: Off"
 			StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+			AddLog("[SUCCESS] Invisibility disabled", Color3.fromRGB(160, 200, 255))
 		end
 	end
 end
@@ -295,15 +301,23 @@ local function CheckEverything()
 	AddLog("——— Diagnostics ———", Color3.fromRGB(140, 140, 180))
 	if not GetCharacter() then return end
 
-	AddLog("Character Parent: " .. tostring(Character.Parent), Color3.fromRGB(200, 200, 220))
-	AddLog("Invisible flag: " .. tostring(Invisible), Color3.fromRGB(200, 200, 220))
+	local visible = 0
+	local total = 0
 
-	if Invisible and Character.Parent == nil then
-		AddLog("[OK] Character is removed → others should not see you", Color3.fromRGB(100, 255, 160))
-	elseif Invisible and Character.Parent ~= nil then
-		AddLog("[WARNING] Invisible flag is true but character is still in Workspace!", Color3.fromRGB(255, 140, 60))
-	else
-		AddLog("[OK] Normal state", Color3.fromRGB(100, 255, 160))
+	for _, v in pairs(Character:GetDescendants()) do
+		if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
+			total += 1
+			if v.Transparency < 1 then
+				visible += 1
+			end
+		end
+	end
+
+	AddLog("Total parts: " .. total, Color3.fromRGB(200, 200, 220))
+	AddLog("Still visible parts: " .. visible, visible > 0 and Color3.fromRGB(255, 160, 60) or Color3.fromRGB(100, 255, 140))
+
+	if Invisible and visible == 0 then
+		AddLog("[OK] All parts hidden on your client", Color3.fromRGB(100, 255, 160))
 	end
 end
 
@@ -334,16 +348,16 @@ end)
 LocalPlayer.CharacterAdded:Connect(function()
 	AddLog("[INFO] Character respawned", Color3.fromRGB(180, 180, 100))
 	Invisible = false
-	if Connection then Connection:Disconnect() Connection = nil end
-	if BodyVelocity then BodyVelocity:Destroy() BodyVelocity = nil end
 	ToggleBtn.Text = "Enable Invisibility"
 	ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
 	StatusLabel.Text = "Status: Off"
 	StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+	task.wait(1)
+	GetCharacter()
 end)
 
 -- Start
-AddLog("Alliver Hub loaded", Color3.fromRGB(140, 140, 255))
+AddLog("Alliver Hub loaded (Stable version)", Color3.fromRGB(140, 140, 255))
 AddLog("Keybind: G", Color3.fromRGB(140, 140, 180))
-AddLog("This version removes character from Workspace", Color3.fromRGB(180, 140, 255))
+AddLog("Note: True invisibility for others is limited", Color3.fromRGB(255, 180, 100))
 GetCharacter()
