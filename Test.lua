@@ -1,387 +1,574 @@
--- Alliver Hub | Maximum Invisibility (Hitbox Preserved)
--- You stay in the same place with real hitboxes, only visuals are destroyed
+-- ============================================
+-- AIM SCRIPT С МОБИЛЬНЫМ МЕНЮ
+-- ============================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
-
+local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
-local Character, Humanoid, RootPart
-local Invisible = false
-local EnforceConnection = nil
-local OriginalData = {}
 
-local Logs = {}
-local MaxLogs = 14
+-- ============================================
+-- НАСТРОЙКИ
+-- ============================================
+local Settings = {
+    AimEnabled = false,
+    TeamCheck = false,
+    FOV_Radius = 150,
+    ShowFOV = true,
+    Smoothness = 5,
+    AimPart = "Head", -- Head, HumanoidRootPart, UpperTorso
+    FOV_Color = Color3.fromRGB(255, 255, 255),
+    AimColor = Color3.fromRGB(255, 0, 0),
+}
 
--- ====================== LOGS ======================
-local function AddLog(text, color)
-	color = color or Color3.fromRGB(200, 200, 220)
-	table.insert(Logs, 1, {Text = text, Color = color})
-	if #Logs > MaxLogs then table.remove(Logs) end
-	if _G.AlliverUpdateLogs then _G.AlliverUpdateLogs() end
-end
+local AimTarget = nil
+local MenuOpen = true
 
-local function ClearLogs()
-	Logs = {}
-	if _G.AlliverUpdateLogs then _G.AlliverUpdateLogs() end
-end
-
--- ====================== GUI ======================
+-- ============================================
+-- СОЗДАНИЕ GUI
+-- ============================================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AlliverHub"
+ScreenGui.Name = "AimGui"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-pcall(function() ScreenGui.Parent = CoreGui end)
+-- Пытаемся поместить в CoreGui, если не удаётся — в PlayerGui
+pcall(function()
+    ScreenGui.Parent = game:GetService("CoreGui")
+end)
 if not ScreenGui.Parent then
-	ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
+-- ============================================
+-- FOV CIRCLE (Drawing API)
+-- ============================================
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+FOVCircle.Radius = Settings.FOV_Radius
+FOVCircle.Color = Settings.FOV_Color
+FOVCircle.Thickness = 1.5
+FOVCircle.Filled = false
+FOVCircle.Visible = Settings.ShowFOV
+FOVCircle.Transparency = 0.8
+
+-- ============================================
+-- КНОПКА ОТКРЫТИЯ МЕНЮ (всегда видна)
+-- ============================================
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleMenu"
+ToggleButton.Size = UDim2.new(0, 50, 0, 50)
+ToggleButton.Position = UDim2.new(0, 10, 0.5, -25)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+ToggleButton.Text = "⚙"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 24
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Parent = ScreenGui
+ToggleButton.ZIndex = 100
+ToggleButton.BackgroundTransparency = 0.2
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 25)
+ToggleCorner.Parent = ToggleButton
+
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Color = Color3.fromRGB(100, 100, 255)
+ToggleStroke.Thickness = 2
+ToggleStroke.Parent = ToggleButton
+
+-- Перетаскивание кнопки
+local draggingToggle = false
+local toggleDragStart, toggleStartPos
+
+ToggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingToggle = true
+        toggleDragStart = input.Position
+        toggleStartPos = ToggleButton.Position
+    end
+end)
+
+ToggleButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingToggle = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if draggingToggle and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        local delta = input.Position - toggleDragStart
+        ToggleButton.Position = UDim2.new(
+            toggleStartPos.X.Scale, toggleStartPos.X.Offset + delta.X,
+            toggleStartPos.Y.Scale, toggleStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ============================================
+-- ГЛАВНОЕ МЕНЮ (ФРЕЙМ)
+-- ============================================
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 340, 0, 410)
-MainFrame.Position = UDim2.new(0.5, -170, 0.32, -205)
-MainFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 19)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true
+MainFrame.Name = "MainMenu"
+MainFrame.Size = UDim2.new(0, 280, 0, 420)
+MainFrame.Position = UDim2.new(0.5, -140, 0.5, -210)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+MainFrame.BackgroundTransparency = 0.05
+MainFrame.Visible = MenuOpen
 MainFrame.Parent = ScreenGui
+MainFrame.ZIndex = 50
+MainFrame.ClipsDescendants = true
 
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = MainFrame
 
-local Stroke = Instance.new("UIStroke", MainFrame)
-Stroke.Color = Color3.fromRGB(110, 95, 255)
-Stroke.Thickness = 1.6
-Stroke.Transparency = 0.25
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(80, 80, 200)
+MainStroke.Thickness = 2
+MainStroke.Parent = MainFrame
 
-local Title = Instance.new("TextLabel", MainFrame)
-Title.Size = UDim2.new(1, -20, 0, 34)
-Title.Position = UDim2.new(0, 10, 0, 6)
-Title.BackgroundTransparency = 1
-Title.Text = "Alliver Hub"
-Title.TextColor3 = Color3.fromRGB(175, 170, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 20
-Title.TextXAlignment = Enum.TextXAlignment.Left
+-- Перетаскивание меню
+local draggingMenu = false
+local menuDragStart, menuStartPos
 
-local SubTitle = Instance.new("TextLabel", MainFrame)
-SubTitle.Size = UDim2.new(1, -20, 0, 18)
-SubTitle.Position = UDim2.new(0, 10, 0, 34)
-SubTitle.BackgroundTransparency = 1
-SubTitle.Text = "Max Invisibility | Hitboxes Kept"
-SubTitle.TextColor3 = Color3.fromRGB(130, 130, 170)
-SubTitle.Font = Enum.Font.Gotham
-SubTitle.TextSize = 12
-SubTitle.TextXAlignment = Enum.TextXAlignment.Left
+-- ============================================
+-- ЗАГОЛОВОК
+-- ============================================
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 45)
+TitleBar.Position = UDim2.new(0, 0, 0, 0)
+TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
+TitleBar.ZIndex = 51
+TitleBar.Parent = MainFrame
 
-local ToggleBtn = Instance.new("TextButton", MainFrame)
-ToggleBtn.Size = UDim2.new(0.9, 0, 0, 44)
-ToggleBtn.Position = UDim2.new(0.05, 0, 0, 62)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 46)
-ToggleBtn.Text = "Enable Invisibility"
-ToggleBtn.TextColor3 = Color3.fromRGB(225, 225, 255)
-ToggleBtn.Font = Enum.Font.GothamSemibold
-ToggleBtn.TextSize = 15
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 8)
+local TitleBarCorner = Instance.new("UICorner")
+TitleBarCorner.CornerRadius = UDim.new(0, 12)
+TitleBarCorner.Parent = TitleBar
 
-local StatusLabel = Instance.new("TextLabel", MainFrame)
-StatusLabel.Size = UDim2.new(0.9, 0, 0, 22)
-StatusLabel.Position = UDim2.new(0.05, 0, 0, 114)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Status: Off"
-StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 185)
-StatusLabel.Font = Enum.Font.Gotham
+-- Убираем закругление снизу заголовка
+local TitleBarFix = Instance.new("Frame")
+TitleBarFix.Size = UDim2.new(1, 0, 0, 15)
+TitleBarFix.Position = UDim2.new(0, 0, 1, -15)
+TitleBarFix.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
+TitleBarFix.BorderSizePixel = 0
+TitleBarFix.ZIndex = 51
+TitleBarFix.Parent = TitleBar
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Text = "🎯 AIM ASSIST"
+TitleLabel.Size = UDim2.new(1, -50, 1, 0)
+TitleLabel.Position = UDim2.new(0, 15, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 18
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.ZIndex = 52
+TitleLabel.Parent = TitleBar
+
+-- Кнопка закрытия
+local CloseButton = Instance.new("TextButton")
+CloseButton.Text = "✕"
+CloseButton.Size = UDim2.new(0, 35, 0, 35)
+CloseButton.Position = UDim2.new(1, -40, 0, 5)
+CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextSize = 16
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.ZIndex = 52
+CloseButton.Parent = TitleBar
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 8)
+CloseCorner.Parent = CloseButton
+
+-- Перетаскивание через TitleBar
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingMenu = true
+        menuDragStart = input.Position
+        menuStartPos = MainFrame.Position
+    end
+end)
+
+TitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingMenu = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if draggingMenu and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        local delta = input.Position - menuDragStart
+        MainFrame.Position = UDim2.new(
+            menuStartPos.X.Scale, menuStartPos.X.Offset + delta.X,
+            menuStartPos.Y.Scale, menuStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ============================================
+-- КОНТЕНТ (СКРОЛЛИНГ)
+-- ============================================
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Name = "Content"
+ScrollFrame.Size = UDim2.new(1, -10, 1, -55)
+ScrollFrame.Position = UDim2.new(0, 5, 0, 50)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.ScrollBarThickness = 4
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 255)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
+ScrollFrame.ZIndex = 51
+ScrollFrame.Parent = MainFrame
+
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 8)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ScrollFrame
+
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingTop = UDim.new(0, 5)
+ContentPadding.PaddingLeft = UDim.new(0, 5)
+ContentPadding.PaddingRight = UDim.new(0, 5)
+ContentPadding.Parent = ScrollFrame
+
+-- ============================================
+-- ФУНКЦИИ СОЗДАНИЯ ЭЛЕМЕНТОВ UI
+-- ============================================
+
+-- Создание Toggle (переключатель)
+local function CreateToggle(parent, text, default, callback)
+    local ToggleFrame = Instance.new("Frame")
+    ToggleFrame.Size = UDim2.new(1, -10, 0, 40)
+    ToggleFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    ToggleFrame.ZIndex = 52
+    ToggleFrame.Parent = parent
+
+    local ToggleFrameCorner = Instance.new("UICorner")
+    ToggleFrameCorner.CornerRadius = UDim.new(0, 8)
+    ToggleFrameCorner.Parent = ToggleFrame
+
+    local Label = Instance.new("TextLabel")
+    Label.Text = text
+    Label.Size = UDim2.new(1, -70, 1, 0)
+    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+    Label.TextSize = 14
+    Label.Font = Enum.Font.Gotham
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.ZIndex = 53
+    Label.Parent = ToggleFrame
+
+    local ToggleBtn = Instance.new("TextButton")
+    ToggleBtn.Size = UDim2.new(0, 50, 0, 26)
+    ToggleBtn.Position = UDim2.new(1, -58, 0.5, -13)
+    ToggleBtn.BackgroundColor3 = default and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(80, 80, 80)
+    ToggleBtn.Text = default and "ON" or "OFF"
+    ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleBtn.TextSize = 12
+    ToggleBtn.Font = Enum.Font.GothamBold
+    ToggleBtn.ZIndex = 53
+    ToggleBtn.Parent = ToggleFrame
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 13)
+    BtnCorner.Parent = ToggleBtn
+
+    local state = default
+
+    ToggleBtn.MouseButton1Click:Connect(function()
+        state = not state
+        ToggleBtn.Text = state and "ON" or "OFF"
+        ToggleBtn.BackgroundColor3 = state and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(80, 80, 80)
+        if callback then callback(state) end
+    end)
+
+    return ToggleFrame
+end
+
+-- Создание Slider
+local function CreateSlider(parent, text, min, max, default, callback)
+    local SliderFrame = Instance.new("Frame")
+    SliderFrame.Size = UDim2.new(1, -10, 0, 60)
+    SliderFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    SliderFrame.ZIndex = 52
+    SliderFrame.Parent = parent
+
+    local SliderFrameCorner = Instance.new("UICorner")
+    SliderFrameCorner.CornerRadius = UDim.new(0, 8)
+    SliderFrameCorner.Parent = SliderFrame
+
+    local Label = Instance.new("TextLabel")
+    Label.Text = text .. ": " .. tostring(default)
+    Label.Size = UDim2.new(1, -10, 0, 25)
+    Label.Position = UDim2.new(0, 12, 0, 2)
+    Label.BackgroundTransparency = 1
+    Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+    Label.TextSize = 13
+    Label.Font = Enum.Font.Gotham
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.ZIndex = 53
+    Label.Parent = SliderFrame
+
+    local SliderBG = Instance.new("Frame")
+    SliderBG.Size = UDim2.new(1, -24, 0, 14)
+    SliderBG.Position = UDim2.new(0, 12, 0, 34)
+    SliderBG.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    SliderBG.ZIndex = 53
+    SliderBG.Parent = SliderFrame
+
+    local SliderBGCorner = Instance.new("UICorner")
+    SliderBGCorner.CornerRadius = UDim.new(0, 7)
+    SliderBGCorner.Parent = SliderBG
+
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    SliderFill.BackgroundColor3 = Color3.fromRGB(80, 120, 255)
+    SliderFill.ZIndex = 54
+    SliderFill.Parent = SliderBG
+
+    local SliderFillCorner = Instance.new("UICorner")
+    SliderFillCorner.CornerRadius = UDim.new(0, 7)
+    SliderFillCorner.Parent = SliderFill
+
+    local SliderButton = Instance.new("TextButton")
+    SliderButton.Size = UDim2.new(1, 0, 1, 0)
+    SliderButton.BackgroundTransparency = 1
+    SliderButton.Text = ""
+    SliderButton.ZIndex = 55
+    SliderButton.Parent = SliderBG
+
+    local sliding = false
+
+    local function updateSlider(inputPos)
+        local relativeX = math.clamp((inputPos.X - SliderBG.AbsolutePosition.X) / SliderBG.AbsoluteSize.X, 0, 1)
+        local value = math.floor(min + (max - min) * relativeX)
+        SliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+        Label.Text = text .. ": " .. tostring(value)
+        if callback then callback(value) end
+    end
+
+    SliderButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            sliding = true
+            updateSlider(input.Position)
+        end
+    end)
+
+    SliderButton.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            sliding = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if sliding and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            updateSlider(input.Position)
+        end
+    end)
+
+    return SliderFrame
+end
+
+-- Создание Dropdown (выбор)
+local function CreateDropdown(parent, text, options, default, callback)
+    local DropFrame = Instance.new("Frame")
+    DropFrame.Size = UDim2.new(1, -10, 0, 40)
+    DropFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    DropFrame.ZIndex = 52
+    DropFrame.ClipsDescendants = false
+    DropFrame.Parent = parent
+
+    local DropCorner = Instance.new("UICorner")
+    DropCorner.CornerRadius = UDim.new(0, 8)
+    DropCorner.Parent = DropFrame
+
+    local Label = Instance.new("TextLabel")
+    Label.Text = text .. ":"
+    Label.Size = UDim2.new(0.5, -5, 1, 0)
+    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+    Label.TextSize = 13
+    Label.Font = Enum.Font.Gotham
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.ZIndex = 53
+    Label.Parent = DropFrame
+
+    local SelectedBtn = Instance.new("TextButton")
+    SelectedBtn.Size = UDim2.new(0.45, 0, 0, 28)
+    SelectedBtn.Position = UDim2.new(0.52, 0, 0.5, -14)
+    SelectedBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 100)
+    SelectedBtn.Text = default .. " ▼"
+    SelectedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SelectedBtn.TextSize = 12
+    SelectedBtn.Font = Enum.Font.GothamBold
+    SelectedBtn.ZIndex = 53
+    SelectedBtn.Parent = DropFrame
+
+    local SelCorner = Instance.new("UICorner")
+    SelCorner.CornerRadius = UDim.new(0, 6)
+    SelCorner.Parent = SelectedBtn
+
+    local OptionsFrame = Instance.new("Frame")
+    OptionsFrame.Size = UDim2.new(0.45, 0, 0, #options * 30)
+    OptionsFrame.Position = UDim2.new(0.52, 0, 1, 2)
+    OptionsFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+    OptionsFrame.Visible = false
+    OptionsFrame.ZIndex = 60
+    OptionsFrame.Parent = DropFrame
+
+    local OptCorner = Instance.new("UICorner")
+    OptCorner.CornerRadius = UDim.new(0, 6)
+    OptCorner.Parent = OptionsFrame
+
+    for i, option in ipairs(options) do
+        local OptBtn = Instance.new("TextButton")
+        OptBtn.Size = UDim2.new(1, 0, 0, 30)
+        OptBtn.Position = UDim2.new(0, 0, 0, (i - 1) * 30)
+        OptBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
+        OptBtn.BackgroundTransparency = 0.3
+        OptBtn.Text = option
+        OptBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        OptBtn.TextSize = 12
+        OptBtn.Font = Enum.Font.Gotham
+        OptBtn.ZIndex = 61
+        OptBtn.Parent = OptionsFrame
+
+        OptBtn.MouseButton1Click:Connect(function()
+            SelectedBtn.Text = option .. " ▼"
+            OptionsFrame.Visible = false
+            if callback then callback(option) end
+        end)
+    end
+
+    SelectedBtn.MouseButton1Click:Connect(function()
+        OptionsFrame.Visible = not OptionsFrame.Visible
+    end)
+
+    return DropFrame
+end
+
+-- Разделитель
+local function CreateSeparator(parent, text)
+    local SepFrame = Instance.new("Frame")
+    SepFrame.Size = UDim2.new(1, -10, 0, 25)
+    SepFrame.BackgroundTransparency = 1
+    SepFrame.ZIndex = 52
+    SepFrame.Parent = parent
+
+    local SepLabel = Instance.new("TextLabel")
+    SepLabel.Text = "━━ " .. text .. " ━━"
+    SepLabel.Size = UDim2.new(1, 0, 1, 0)
+    SepLabel.BackgroundTransparency = 1
+    SepLabel.TextColor3 = Color3.fromRGB(120, 120, 255)
+    SepLabel.TextSize = 12
+    SepLabel.Font = Enum.Font.GothamBold
+    SepLabel.ZIndex = 53
+    SepLabel.Parent = SepFrame
+
+    return SepFrame
+end
+
+-- ============================================
+-- СОЗДАНИЕ ЭЛЕМЕНТОВ МЕНЮ
+-- ============================================
+CreateSeparator(ScrollFrame, "ОСНОВНЫЕ")
+
+CreateToggle(ScrollFrame, "Aim Assist", Settings.AimEnabled, function(state)
+    Settings.AimEnabled = state
+end)
+
+CreateToggle(ScrollFrame, "Team Check", Settings.TeamCheck, function(state)
+    Settings.TeamCheck = state
+end)
+
+CreateToggle(ScrollFrame, "Показать FOV", Settings.ShowFOV, function(state)
+    Settings.ShowFOV = state
+    FOVCircle.Visible = state
+end)
+
+CreateSeparator(ScrollFrame, "НАСТРОЙКИ")
+
+CreateSlider(ScrollFrame, "FOV Радиус", 50, 400, Settings.FOV_Radius, function(value)
+    Settings.FOV_Radius = value
+    FOVCircle.Radius = value
+end)
+
+CreateSlider(ScrollFrame, "Плавность", 1, 20, Settings.Smoothness, function(value)
+    Settings.Smoothness = value
+end)
+
+CreateDropdown(ScrollFrame, "Aim Part", {"Head", "HumanoidRootPart", "UpperTorso"}, Settings.AimPart, function(option)
+    Settings.AimPart = option
+end)
+
+CreateSeparator(ScrollFrame, "УПРАВЛЕНИЕ")
+
+-- Статус
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -10, 0, 30)
+StatusLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+StatusLabel.Text = "Статус: Выключен"
+StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
 StatusLabel.TextSize = 13
-StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Font = Enum.Font.GothamBold
+StatusLabel.ZIndex = 53
+StatusLabel.Parent = ScrollFrame
 
-local ClearBtn = Instance.new("TextButton", MainFrame)
-ClearBtn.Size = UDim2.new(0.42, 0, 0, 28)
-ClearBtn.Position = UDim2.new(0.05, 0, 0, 145)
-ClearBtn.BackgroundColor3 = Color3.fromRGB(42, 28, 50)
-ClearBtn.Text = "Clear Logs"
-ClearBtn.TextColor3 = Color3.fromRGB(205, 185, 225)
-ClearBtn.Font = Enum.Font.Gotham
-ClearBtn.TextSize = 12
-Instance.new("UICorner", ClearBtn).CornerRadius = UDim.new(0, 6)
+local StatusCorner = Instance.new("UICorner")
+StatusCorner.CornerRadius = UDim.new(0, 8)
+StatusCorner.Parent = StatusLabel
 
-local CheckBtn = Instance.new("TextButton", MainFrame)
-CheckBtn.Size = UDim2.new(0.42, 0, 0, 28)
-CheckBtn.Position = UDim2.new(0.53, 0, 0, 145)
-CheckBtn.BackgroundColor3 = Color3.fromRGB(26, 38, 54)
-CheckBtn.Text = "Check"
-CheckBtn.TextColor3 = Color3.fromRGB(180, 220, 255)
-CheckBtn.Font = Enum.Font.Gotham
-CheckBtn.TextSize = 12
-Instance.new("UICorner", CheckBtn).CornerRadius = UDim.new(0, 6)
+-- Кнопка уничтожения скрипта
+local DestroyBtn = Instance.new("TextButton")
+DestroyBtn.Size = UDim2.new(1, -10, 0, 35)
+DestroyBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+DestroyBtn.Text = "🗑 Удалить скрипт"
+DestroyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DestroyBtn.TextSize = 14
+DestroyBtn.Font = Enum.Font.GothamBold
+DestroyBtn.ZIndex = 53
+DestroyBtn.Parent = ScrollFrame
 
-local LogTitle = Instance.new("TextLabel", MainFrame)
-LogTitle.Size = UDim2.new(1, -20, 0, 20)
-LogTitle.Position = UDim2.new(0, 10, 0, 184)
-LogTitle.BackgroundTransparency = 1
-LogTitle.Text = "Logs / Errors:"
-LogTitle.TextColor3 = Color3.fromRGB(150, 150, 195)
-LogTitle.Font = Enum.Font.GothamSemibold
-LogTitle.TextSize = 13
-LogTitle.TextXAlignment = Enum.TextXAlignment.Left
+local DestroyCorner = Instance.new("UICorner")
+DestroyCorner.CornerRadius = UDim.new(0, 8)
+DestroyCorner.Parent = DestroyBtn
 
-local LogFrame = Instance.new("ScrollingFrame", MainFrame)
-LogFrame.Size = UDim2.new(0.9, 0, 0, 190)
-LogFrame.Position = UDim2.new(0.05, 0, 0, 206)
-LogFrame.BackgroundColor3 = Color3.fromRGB(9, 9, 13)
-LogFrame.BorderSizePixel = 0
-LogFrame.ScrollBarThickness = 4
-LogFrame.ScrollBarImageColor3 = Color3.fromRGB(85, 80, 160)
-LogFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-Instance.new("UICorner", LogFrame).CornerRadius = UDim.new(0, 8)
-
-local LogList = Instance.new("UIListLayout", LogFrame)
-LogList.SortOrder = Enum.SortOrder.LayoutOrder
-LogList.Padding = UDim.new(0, 3)
-
-_G.AlliverUpdateLogs = function()
-	for _, child in pairs(LogFrame:GetChildren()) do
-		if child:IsA("TextLabel") then child:Destroy() end
-	end
-	for i, log in ipairs(Logs) do
-		local label = Instance.new("TextLabel", LogFrame)
-		label.Size = UDim2.new(1, -8, 0, 15)
-		label.BackgroundTransparency = 1
-		label.Text = log.Text
-		label.TextColor3 = log.Color
-		label.Font = Enum.Font.Code
-		label.TextSize = 11
-		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.TextTruncate = Enum.TextTruncate.AtEnd
-		label.LayoutOrder = i
-	end
-	LogFrame.CanvasSize = UDim2.new(0, 0, 0, LogList.AbsoluteContentSize.Y + 8)
-end
-
--- ====================== CORE LOGIC ======================
-local function GetCharacter()
-	local success, err = pcall(function()
-		Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-		Humanoid = Character:WaitForChild("Humanoid", 5)
-		RootPart = Character:WaitForChild("HumanoidRootPart", 5)
-		if not Humanoid or not RootPart then
-			error("Humanoid or RootPart missing")
-		end
-	end)
-	if not success then
-		AddLog("[ERROR] " .. tostring(err), Color3.fromRGB(255, 85, 85))
-		return false
-	end
-	AddLog("[OK] Character ready", Color3.fromRGB(100, 255, 145))
-	return true
-end
-
-local function SaveOriginalState()
-	OriginalData = {}
-	local count = 0
-
-	for _, v in pairs(Character:GetDescendants()) do
-		if v:IsA("BasePart") then
-			OriginalData[v] = {
-				Transparency = v.Transparency,
-				CanCollide = v.CanCollide,
-				Size = v.Size,
-				LocalTransparencyModifier = v.LocalTransparencyModifier
-			}
-			count += 1
-		elseif v:IsA("Decal") or v:IsA("Texture") then
-			OriginalData[v] = {Transparency = v.Transparency}
-		elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
-			OriginalData[v] = {Enabled = v.Enabled}
-		end
-	end
-
-	-- Save clothing references
-	OriginalData.Shirt = Character:FindFirstChildOfClass("Shirt")
-	OriginalData.Pants = Character:FindFirstChildOfClass("Pants")
-	OriginalData.TShirt = Character:FindFirstChildOfClass("ShirtGraphic")
-
-	AddLog("[OK] Saved state of " .. count .. " objects", Color3.fromRGB(100, 220, 255))
-end
-
-local function ForceHide()
-	if not Character or not Character.Parent then return end
-
-	-- Destroy accessories every time (games re-add them)
-	for _, child in pairs(Character:GetChildren()) do
-		if child:IsA("Accessory") or child:IsA("Hat") then
-			child:Destroy()
-		end
-	end
-
-	-- Destroy clothing
-	local shirt = Character:FindFirstChildOfClass("Shirt")
-	local pants = Character:FindFirstChildOfClass("Pants")
-	local tshirt = Character:FindFirstChildOfClass("ShirtGraphic")
-	if shirt then shirt:Destroy() end
-	if pants then pants:Destroy() end
-	if tshirt then tshirt:Destroy() end
-
-	-- Force every part
-	for _, v in pairs(Character:GetDescendants()) do
-		if v:IsA("BasePart") then
-			v.Transparency = 1
-			v.LocalTransparencyModifier = 1
-			if v.Name ~= "HumanoidRootPart" then
-				v.CanCollide = false
-			end
-		elseif v:IsA("Decal") or v:IsA("Texture") then
-			v.Transparency = 1
-		elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
-			v.Enabled = false
-		end
-	end
-
-	-- Hide name & health
-	pcall(function()
-		Humanoid.NameDisplayDistance = 0
-		Humanoid.HealthDisplayDistance = 0
-		Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-	end)
-end
-
-local function Restore()
-	if not Character then return end
-
-	for obj, data in pairs(OriginalData) do
-		if typeof(obj) == "Instance" and obj.Parent then
-			pcall(function()
-				if obj:IsA("BasePart") then
-					obj.Transparency = data.Transparency or 0
-					obj.LocalTransparencyModifier = data.LocalTransparencyModifier or 0
-					obj.CanCollide = data.CanCollide
-				elseif obj:IsA("Decal") or obj:IsA("Texture") then
-					obj.Transparency = data.Transparency or 0
-				elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
-					obj.Enabled = data.Enabled
-				end
-			end)
-		end
-	end
-
-	pcall(function()
-		Humanoid.NameDisplayDistance = 100
-		Humanoid.HealthDisplayDistance = 100
-		Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
-	end)
-end
-
-local function StartEnforcement()
-	if EnforceConnection then EnforceConnection:Disconnect() end
-
-	EnforceConnection = RunService.Heartbeat:Connect(function()
-		if Invisible and Character and Character.Parent then
-			ForceHide()
-		end
-	end)
-end
-
-local function StopEnforcement()
-	if EnforceConnection then
-		EnforceConnection:Disconnect()
-		EnforceConnection = nil
-	end
-end
-
-local function ToggleInvisibility()
-	AddLog("——— Toggling ———", Color3.fromRGB(145, 145, 185))
-
-	if not GetCharacter() then return end
-
-	Invisible = not Invisible
-
-	if Invisible then
-		SaveOriginalState()
-		ForceHide()
-		StartEnforcement()
-
-		ToggleBtn.Text = "Disable Invisibility"
-		ToggleBtn.BackgroundColor3 = Color3.fromRGB(58, 28, 72)
-		StatusLabel.Text = "Status: On | Hitboxes Active"
-		StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 160)
-
-		AddLog("[SUCCESS] Invisibility enabled", Color3.fromRGB(100, 255, 160))
-		AddLog("Hitboxes & death logic fully preserved", Color3.fromRGB(180, 150, 255))
-	else
-		StopEnforcement()
-		Restore()
-
-		ToggleBtn.Text = "Enable Invisibility"
-		ToggleBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 46)
-		StatusLabel.Text = "Status: Off"
-		StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 185)
-
-		AddLog("[SUCCESS] Invisibility disabled + restored", Color3.fromRGB(160, 205, 255))
-	end
-end
-
-local function CheckEverything()
-	AddLog("——— Diagnostics ———", Color3.fromRGB(145, 145, 185))
-	if not GetCharacter() then return end
-
-	local total, visible = 0, 0
-	for _, v in pairs(Character:GetDescendants()) do
-		if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
-			total += 1
-			if v.Transparency < 1 or v.LocalTransparencyModifier < 1 then
-				visible += 1
-			end
-		end
-	end
-
-	AddLog("Body parts: " .. total, Color3.fromRGB(200, 200, 220))
-	AddLog("Still visible: " .. visible, visible > 0 and Color3.fromRGB(255, 160, 60) or Color3.fromRGB(100, 255, 145))
-	AddLog("RootPart CanCollide: " .. tostring(RootPart.CanCollide), Color3.fromRGB(200, 200, 220))
-	AddLog("Enforcement active: " .. tostring(EnforceConnection ~= nil), Color3.fromRGB(200, 200, 220))
-
-	if Invisible and visible == 0 then
-		AddLog("[OK] Fully hidden on your client", Color3.fromRGB(100, 255, 145))
-	end
-end
-
--- ====================== EVENTS ======================
-ToggleBtn.MouseButton1Click:Connect(function()
-	local ok, err = pcall(ToggleInvisibility)
-	if not ok then AddLog("[CRITICAL] " .. tostring(err), Color3.fromRGB(255, 50, 50)) end
+-- Обновляем CanvasSize
+ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 20)
 end)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 20)
 
-ClearBtn.MouseButton1Click:Connect(function()
-	ClearLogs()
-	AddLog("Logs cleared", Color3.fromRGB(160, 160, 185))
-end)
+-- ============================================
+-- ЛОГИКА ПЕРЕКЛЮЧЕНИЯ МЕНЮ
+-- ============================================
+local function ToggleMenu()
+    MenuOpen = not MenuOpen
+    MainFrame.Visible = MenuOpen
+    ToggleButton.Text = MenuOpen and "✕" or "⚙"
+    ToggleButton.BackgroundColor3 = MenuOpen and Color3.fromRGB(200, 50, 50) or Color3.fromRGB(30, 30, 30)
+end
 
-CheckBtn.MouseButton1Click:Connect(function()
-	local ok, err = pcall(CheckEverything)
-	if not ok then AddLog("[CRITICAL] " .. tostring(err), Color3.fromRGB(255, 50, 50)) end
-end)
+ToggleButton.MouseButton1Click:Connect(ToggleMenu)
+CloseButton.MouseButton1Click:Connect(ToggleMenu)
 
-UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.KeyCode == Enum.KeyCode.G then
-		local ok, err = pcall(ToggleInvisibility)
-		if not ok then AddLog("[CRITICAL] " .. tostring(err), Color3.fromRGB(255, 50, 50)) end
-	end
-end)
+-- ============================================
+-- AIM ЛОГИКА
+-- ============================================
+local function IsAlive(player)
+    local character = player.Character
+    if not character then return false end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+    return true
+end
 
-LocalPlayer.CharacterAdded:Connect(function()
-	AddLog("[INFO] Character respawned", Color3.fromRGB(185, 185, 110))
-	Invisible = false
-	StopEnforcement()
-	ToggleBtn.Text = "Enable Invisibility"
-	ToggleBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 46)
-	StatusLabel.Text = "Status: Off"
-	StatusLabel.TextColor3 = Color3.fromRGB(160, 160, 185)
-	task.wait(1.2)
-	GetCharacter()
-end)
-
--- Start
-AddLog("Alliver Hub loaded", Color3.fromRGB(145, 145, 255))
-AddLog("Keybind: G", Color3.fromRGB(145, 145, 185))
-AddLog("Hitboxes + death logic fully preserved", Color3.fromRGB(180, 150, 255))
-GetCharacter()
+local function IsTeammate(player)
+    if not Settings.TeamCheck then return false end
+    if LocalPlayer.Team and player.Team and 
